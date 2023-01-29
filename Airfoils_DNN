@@ -1,0 +1,306 @@
+url = 'https://archive.ics.uci.edu/ml/machine-learning-databases/00291/airfoil_self_noise.dat'
+download(url)
+data = np.loadtxt('airfoil_self_noise.dat')
+for c in df.columns:
+fig, ax = plt.subplots(dpi=100) df[c].hist(ax=ax) 
+ax.set_xlabel(c) 
+ax.set_ylabel('Count')
+
+for i in range(5):
+c_i = df.columns[i]
+for j in range(i + 1, 5):
+            c_j = df.columns[j]
+            fig, ax = plt.subplots(dpi=100)
+            ax.scatter(df[c_i], df[c_j])
+            ax.set_xlabel(c_i)
+            ax.set_ylabel(c_j)
+            
+
+X = data[:, :-1]
+y = data[:, -1][:, None]
+import torch
+import torch.nn as nn
+# Use standard torch functionality to define a function
+# mse_loss(y_obs, y_pred) which gives you the mean of the sum of the squ are of the difference between y_obs and y_pred
+mse_loss = nn.MSELoss()
+y_obs_tmp = np.random.randn(100, 1)
+y_pred_tmp = np.random.randn(100, 1)
+print('Your mse_loss: {0:1.2f}'.format(mse_loss(torch.Tensor(y_obs_tmp),
+                                                torch.Tensor(y_pred_tmp))))
+print('What you should be getting: {0:1.2f}'.format(np.mean((y_obs_tmp - y_pred_tmp) ** 2)))
+
+# Now, we will create a regularization term for the loss # I'm just going to give you this one:
+def l2_reg_loss(params):
+    """
+    This needs an iterable object of network parameters.
+    You can get it by doing `net.parameters()`.
+Returns the sum of the squared norms of all parameters. """
+l2_reg = torch.tensor(0.)
+for p in params:
+l2_reg += torch.norm(p) ** 2 
+return l2_reg
+
+
+# adding the two together to make a mean square error loss
+# plus some weight (which we will call reg_weight) times the sum of the
+squared norms
+# of all parameters.
+# I give you the signature and you have to implement the rest of the cod e:
+def loss_func(y_obs, y_pred, reg_weight, params):
+"""
+Parameters:
+y_obs      -
+y_pred     -
+reg_weight -
+params     -
+The observed outputs
+The predicted outputs
+The regularization weight (a positive scalar)
+An iterable containing the parameters of the network
+    Returns the sum of the MSE loss plus reg_weight times the sum of the
+squared norms of
+all parameters.
+"""
+# Your code here
+return mse_loss(y_obs, y_pred) + reg_weight * l2_reg_loss(params)
+
+dummy_net = nn.Sequential(nn.Linear(10, 20),
+                          nn.Sigmoid(),
+                          nn.Linear(20, 1))
+loss = loss_func(torch.Tensor(y_obs_tmp), torch.Tensor(y_pred_tmp),
+0.0,
+dummy_net.parameters())
+print('The loss without regularization: {0:1.2f}'.format(loss.item())) print('This should be the same as this: {0:1.2f}'.format(mse_loss(torch. Tensor(y_obs_tmp), torch.Tensor(y_pred_tmp))))
+loss = loss_func(torch.Tensor(y_obs_tmp), torch.Tensor(y_pred_tmp),
+0.01,
+dummy_net.parameters())
+print('The loss with regularization: {0:1.2f}'.format(loss.item()))
+
+# We are going to start by creating a class that encapsulates a regressi
+on
+# network so that we can turn on or off input/output standarization
+# without too much fuss.
+# The class will essentially represent a trained network model.
+# It will "know" whether or not during training we standarized the data. # I am not asking you to do anything here, so you may just run this code segment
+# or read through if you want to know about the details.
+from sklearn.preprocessing import StandardScaler
+class TrainedModel(object): """
+    A class that represents a trained network model.
+    The main reason I created this class is to encapsulate the standariz
+ation
+    process in a nice way.
+    Parameters:
+net -
+    standarized    -
+and outputs
+    feature_scaler -
+ransform()
+    target_scaler  -
+    """
+A network.
+True if the network expects standarized features
+standarized targets. False otherwise.
+A feature scalar - Ala scikit learn. Must have t
+and inverse_transform() implemented.
+Similar to feature_scaler but for targets...
+def __init__(self, net, standarized=False, feature_scaler=None, targ et_scaler=None):
+        self.net = net
+        self.standarized = standarized
+        self.feature_scaler = feature_scaler
+        self.target_scaler = target_scaler
+def __call__(self, X): """
+())
+Evaluates the model at X.
+"""
+# If not scaled, then the model is just net(X) if not self.standarized:
+return self.net(X) # Otherwise:
+# Scale X:
+X_scaled = self.feature_scaler.transform(X)
+# Evaluate the network output - which is also scaled:
+y_scaled = self.net(torch.Tensor(X_scaled))
+# Scale the output back:
+y = self.target_scaler.inverse_transform(y_scaled.detach().numpy
+return y
+
+
+# Go through the code that follows and fill in the missing parts
+from sklearn.model_selection import train_test_split # We need this for a progress bar:
+from tqdm import tqdm
+def train_net(X, y, net, reg_weight, n_batch, epochs, lr, test_size=0.33 ,
+standarize=True):
+# Split the data
+The observed features
+The observed targets
+The network you want to fit
+The batch size you want to use for stochastic optimi
+How many times do you want to pass over the training
+The learning rate for the stochastic optimization al
+What percentage of the data should be used for testi
+Whether or not you want to standarize the features a
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=
+0.33)
+    # Standarize the data
+if standarize:
+# Build the scalers
+feature_scaler = StandardScaler().fit(X) target_scaler = StandardScaler().fit(y)
+# Get scaled versions of the data
+X_train_scaled = feature_scaler.transform(X_train) y_train_scaled = target_scaler.transform(y_train) X_test_scaled = feature_scaler.transform(X_test) y_test_scaled = target_scaler.transform(y_test)
+else:
+feature_scaler = None target_scaler = None X_train_scaled = X_train y_train_scaled = y_train X_test_scaled = X_test y_test_scaled = y_test
+    # Turn all the numpy arrays to torch tensors
+    X_train_scaled = torch.Tensor(X_train_scaled)
+    X_test_scaled = torch.Tensor(X_test_scaled)
+    
+y_train_scaled = torch.Tensor(y_train_scaled)
+    y_test_scaled = torch.Tensor(y_test_scaled)
+# This is pytorch magick to enable shuffling of the
+# training data every time we go through them
+train_dataset = torch.utils.data.TensorDataset(X_train_scaled, y_tra
+in_scaled)
+    train_data_loader = torch.utils.data.DataLoader(train_dataset,
+batch_size=n_batch, shuffle=True)
+    # Create an Adam optimizing object for the neural network `net`
+    # with learning rate `lr`
+    # raise NotImplementedError('Define the optimizer object! Delete me
+then!')
+optimizer = torch.optim.Adam(net.parameters(), lr=lr) 
+# This is a place to keep track of the test loss
+    test_loss = []
+    # Iterate the optimizer.
+    # Remember, each time we go through the entire dataset we complete a
+n `epoch`
+    # I have wrapped the range around tqdm to give you a nice progress b
+ar
+# to look at
+for e in tqdm(range(epochs)):
+# This loop goes over all the shuffled training data
+# That's why the DataLoader class of PyTorch is convenient for X_batch, y_batch in train_data_loader:
+())
+# Perform a single optimization step with loss function
+# loss_func(y_batch, y_pred, reg_weight, net.parameters()) # Hint 1: You have defined loss_func() already
+# Hint 2: Consult the hands-on activities for an example
+# Your code here
+# calculation of the loss
+optimizer.zero_grad()
+# Make predictions
+y_pred = net(X_batch)
+# Evaluate the loss
+loss = loss_func(y_batch, y_pred, reg_weight, net.parameters
+# Evaluate the derivative of the loss with respect to # all parameters - It knows how to do it because of
+# PyTorch magick
+loss.backward()
+        # And now you are ready to make a step
+        optimizer.step()
+# Evaluate the test loss and append it on the list `test_loss`
+    y_pred_test = net(X_test_scaled)
+    ts_loss = mse_loss(y_test_scaled, y_pred_test)
+    test_loss.append(ts_loss.item())
+# Make a TrainedModel
+trained_model = TrainedModel(net, standarized=standarize,
+feature_scaler=feature_scaler,
+                             target_scaler=target_scaler)
+# Make sure that we return properly scaled
+# Return everything we need to analyze the results
+return trained_model, test_loss, X_train, y_train, X_test, y_test
+
+# A simple one-layer network with 10 neurons
+net = nn.Sequential(nn.Linear(5, 20),
+                    nn.Sigmoid(),
+                    nn.Linear(20, 1))
+epochs = 1000
+lr = 0.01
+reg_weight = 0
+n_batch = 100
+model, test_loss, X_train, y_train, X_test, y_test = train_net(
+    X,
+    y,
+    net,
+    reg_weight,
+    n_batch,
+    epochs,
+lr )
+
+plt.plot(test_loss)
+plt.xlabel("number of epochs")
+plt.ylabel("test loss")
+
+
+
+# investigating the effects of the batch size
+epochs = 400. # pick me
+lr = 0.01# pick me reg_weight =0.00# pick me test_losses = []
+models = []
+batches = [10, 25, 50, 100]# make me a list with the right batch sizes for n_batch in batches:
+print('Training n_batch: {0:d}'.format(n_batch)) net = nn.Sequential(nn.Linear(5, 20),
+                    nn.Sigmoid(),
+                    nn.Linear(20, 1))
+    model, test_loss, X_train, y_train, X_test, y_test = train_net(
+        X,
+        y,
+        net,
+        reg_weight,
+        n_batch,
+        epochs,
+lr )
+    test_losses.append(test_loss)
+    models.append(model)
+    
+    fig, ax = plt.subplots(dpi=100)
+for tl, n_batch in zip(test_losses, batches):
+ax.plot(tl, label='n_batch={0:d}'.format(n_batch)) ax.set_xlabel('Number of epochs')
+ax.set_ylabel('Test loss')
+plt.legend(loc='best');
+
+
+
+#Training a bigger network
+epochs = 400 # pick me lr = 0.001 reg_weights = 0.0 test_losses = [] models = []
+n_batch = 50
+net = nn.Sequential(nn.Linear(5, 100),
+                    nn.ReLU(),
+                    nn.Linear(100, 100),
+                    nn.ReLU(),
+                    nn.Linear(100, 100),
+                    nn.ReLU(),
+                    nn.Linear(100, 100),
+                    nn.ReLU(),
+                    nn.Linear(100, 1))
+model, test_loss, X_train, y_train, X_test, y_test = train_net(
+    X,
+    y,
+    net,
+    reg_weight,
+    n_batch,
+    epochs,
+    lr
+)
+
+# making a prediction
+best_model = model# set this equal to your best model
+def plot_sound_level_as_func_of_stream_vel( freq=2500,
+angle_of_attack=10, chord_length=0.1, suc_side_disp_thick=0.01, ax=None,
+label=None ):
+if ax is None:
+fig, ax = plt.subplots(dpi=100)
+    # The velocities on which we want to evaluate the model
+vel = np.linspace(X[:, 3].min(), X[:, 3].max(), 100)[:, None]
+    # Make the input for the model
+    freqs = freq * np.ones(vel.shape)
+    angles = angle_of_attack * np.ones(vel.shape)
+    chords = chord_length * np.ones(vel.shape)
+    sucs = suc_side_disp_thick * np.ones(vel.shape)
+    # Put all these into a single array
+    XX = np.hstack([freqs, angles, chords, vel, sucs])
+    ax.plot(vel, best_model(XX), label=label)
+    ax.set_xlabel('Velocity (m/s)')
+    ax.set_ylabel('Scaled sound pressure level (decibels)')
+
+# visualization
+fig, ax = plt.subplots(dpi=100) for aofa in [0, 5, 10]:
+plot_sound_level_as_func_of_stream_vel( angle_of_attack=aofa,
+ax=ax,
+label='Angle of attack={0:1.2f}'.format(aofa)
+)
+plt.legend(loc='best');
+    
+    
